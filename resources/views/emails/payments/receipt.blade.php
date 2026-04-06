@@ -11,7 +11,7 @@
         style="font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; border: 1px solid #e0e0e0; border-top: 8px solid #6a00b0; padding: 40px; max-width: 600px; margin: 20px auto; color: #3c4043; background-color: #ffffff;">
 
         <div style="text-align: center; margin-bottom: 20px;">
-            <img src="https://senco.accsangkaychatbot.com/header_img.png" alt="SENCO Header"
+            <img src="https://api.accsangkaychatbot.com/header_img.png" alt="SENCO Header"
                 style="max-width: 100%; height: auto;">
         </div>
 
