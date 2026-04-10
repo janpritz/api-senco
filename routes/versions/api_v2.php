@@ -40,6 +40,7 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
          * 1. ADMIN ONLY (Super Admin)
          * Access: User Management, Settings, Masterlist Sync
          */
+
         Route::middleware(['role:Admin'])->group(function () {
             // User Management
             Route::get('/users', [UserController::class, 'index']);
@@ -54,6 +55,13 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
 
             // Student Management (Full Control)
             Route::post('/students', [StudentController::class, 'store']);
+
+            // Reports
+            Route::prefix('reports')->group(function () {
+                Route::get('/dates', [ReportController::class, 'getAvailableDates']);
+                Route::get('/generate', [ReportController::class, 'getReportData']);
+                Route::get('/all-time-stats', [ReportController::class, 'getAllTimeStats']);
+            });
         });
 
         /**
@@ -89,13 +97,6 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
             Route::get('/payments/lookup', [PaymentController::class, 'lookup']);
             Route::get('/transactions', [ViewTransactionController::class, 'index']);
             Route::get('/transactions/user', [ViewTransactionController::class, 'getTransactions']);
-
-            // Reports
-            Route::prefix('reports')->group(function () {
-                Route::get('/dates', [ReportController::class, 'getAvailableDates']);
-                Route::get('/generate', [ReportController::class, 'getReportData']);
-                Route::get('/all-time-stats', [ReportController::class, 'getAllTimeStats']);
-            });
         });
     });
 });

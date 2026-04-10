@@ -10,140 +10,193 @@ use Illuminate\Http\Request;
 class ReportController extends Controller
 {
     /**
-     * Get unique dates for the frontend dropdown.
+     * Get unique dates for dropdown
      */
     public function getAvailableDates()
     {
         return Payment::select(DB::raw('DATE(created_at) as date'))
             ->distinct()
-            ->orderBy('date', 'desc')
+            ->orderBy('date', 'asc')
             ->pluck('date');
     }
 
     /**
-     * Get detailed report data for a specific date.
+     * Main report data (CUMULATIVE LOGIC)
      */
     public function getReportData(Request $request)
     {
-        $request->validate(['date' => 'required|date_format:Y-m-d']);
+        $request->validate([
+            'date' => 'required|string'
+        ]);
+
         $date = $request->date;
+        $isAllTime = ($date === 'all');
         $colleges = ["CITE", "CASE", "CCJE", "COHME"];
+        $target = 4000;
 
-        //Grand Total for the day
-        // 1. Fetch all payments for this date once to avoid multiple queries
-        // This ensures the "Grand Total" and "Transactions" are perfectly synced
-        $allPaymentsForDate = Payment::with(['student', 'collector'])
-            ->whereDate('created_at', $date)
-            ->get();
-        // 2. Calculate the Grand Total across ALL colleges for this date
-        $grandTotalCollection = $allPaymentsForDate->sum('amount');
+        // ===============================
+        // 1. TRANSACTIONS (ACCUMULATED)
+        // ===============================
+        $query = Payment::with(['student', 'collector']);
 
-        $stats = collect($colleges)->map(function ($collegeName) use ($date) {
+        if (!$isAllTime) {
+            $query->whereDate('created_at', '<=', $date);
+        }
 
-            // 1. Calculate total collected using a JOIN for database-level accuracy
-            $totalCollected = Payment::join('students', 'payments.student_id', '=', 'students.student_id')
-                ->where('students.college', $collegeName)
-                ->whereDate('payments.created_at', $date)
-                ->sum('payments.amount');
+        $allPayments = $query->get();
 
-            // 2. Fetch students for this college with their lifetime payment sums
-            $studentsInCollege = Student::where('college', $collegeName)
-                ->withSum('payments', 'amount')
-                ->get();
+        $transactions = $allPayments->map(function ($p) {
+            return [
+                'reference_number' => $p->reference_number,
+                'student_name' => $p->student->full_name ?? 'Unknown Student',
+                'college' => $p->student->college ?? 'N/A',
+                'amount' => (float) $p->amount,
+                'collected_by' => $p->collector->name ?? 'System/Admin',
+                'time' => $p->created_at->format('M d, Y h:i A'),
+            ];
+        });
 
-            // 3. Categorize students based on your balance logic
-            $paidInFullCount = 0;
-            $partialPaymentCount = 0;
+        // ===============================
+        // 2. COLLEGE STATS (ACCUMULATED)
+        // ===============================
+        $stats = collect($colleges)->map(function ($collegeName) use ($date, $isAllTime, $target) {
 
-            foreach ($studentsInCollege as $student) {
-                $startingBalance = ($student->balance > 0) ? $student->balance : 4000;
-                $totalPaid = $student->payments_sum_amount ?? 0;
-                $remaining = $startingBalance - $totalPaid;
+            // Base query per college
+            $basePaymentQuery = Payment::join('students', 'payments.student_id', '=', 'students.student_id')
+                ->where('students.college', $collegeName);
 
-                if ($totalPaid > 0) {
-                    if ($remaining <= 0) {
-                        $paidInFullCount++;
-                    } else {
-                        $partialPaymentCount++;
-                    }
-                }
+            if (!$isAllTime) {
+                $basePaymentQuery->whereDate('payments.created_at', '<=', $date);
             }
+
+            // Total collected (ACCUMULATED)
+            $totalCollected = $basePaymentQuery->sum('payments.amount');
+
+            // Total students
+            $studentCount = Student::where('college', $collegeName)->count();
+
+            // Paid in full (ACCUMULATED)
+            $paidInFullCount = Student::where('college', $collegeName)
+                ->whereIn('student_id', function ($query) use ($collegeName, $date, $isAllTime, $target) {
+                    $query->select('payments.student_id')
+                        ->from('payments')
+                        ->join('students', 'payments.student_id', '=', 'students.student_id')
+                        ->where('students.college', $collegeName)
+                        ->when(!$isAllTime, function ($q) use ($date) {
+                            $q->whereDate('payments.created_at', '<=', $date);
+                        })
+                        ->groupBy('payments.student_id')
+                        ->havingRaw('SUM(payments.amount) >= ?', [$target]);
+                })
+                ->count();
+
+            // Partial payments (ACCUMULATED)
+            $partialPaymentCount = Student::where('college', $collegeName)
+                ->whereIn('student_id', function ($query) use ($collegeName, $date, $isAllTime, $target) {
+                    $query->select('payments.student_id')
+                        ->from('payments')
+                        ->join('students', 'payments.student_id', '=', 'students.student_id')
+                        ->where('students.college', $collegeName)
+                        ->when(!$isAllTime, function ($q) use ($date) {
+                            $q->whereDate('payments.created_at', '<=', $date);
+                        })
+                        ->groupBy('payments.student_id')
+                        ->havingRaw('SUM(payments.amount) > 0 AND SUM(payments.amount) < ?', [$target]);
+                })
+                ->count();
 
             return [
                 'college' => $collegeName,
-                'total_collected' => (float)$totalCollected,
-                'student_count' => $studentsInCollege->count(),
+                'total_collected' => (float) $totalCollected,
+                'student_count' => $studentCount,
                 'paid_in_full' => $paidInFullCount,
                 'partial_payments' => $partialPaymentCount,
             ];
         });
 
-        // 4. Detailed transaction list for the table
-        $transactions = Payment::with(['student', 'collector'])
-            ->whereDate('created_at', $date)
-            ->get()
-            ->map(fn($p) => [
-                'reference_number' => $p->reference_number,
-                'student_name' => $p->student->full_name ?? 'Unknown Student',
-                'college' => $p->student->college ?? 'N/A',
-                'amount' => (float)$p->amount,
-                'collected_by' => $p->collector->name ?? 'System/Admin',
-                'time' => $p->created_at->format('h:i A'),
-            ]);
-
-        // ADD THIS: Fetch all unique dates and their total sums for the Summary section
+        // ===============================
+        // 3. SUMMARY LIST (UP TO DATE)
+        // ===============================
         $summaryData = Payment::select(
-            DB::raw('DATE(created_at) as date'),
-            DB::raw('SUM(amount) as daily_total')
-        )
+                DB::raw('DATE(created_at) as date'),
+                DB::raw('SUM(amount) as daily_total')
+            )
+            ->when(!$isAllTime, function ($q) use ($date) {
+                $q->whereDate('created_at', '<=', $date);
+            })
             ->groupBy('date')
-            ->orderBy('date', 'desc')
+            ->orderBy('date', 'asc')
             ->get();
 
-        $grandTotalAllTime = Payment::sum('amount');
+        // ===============================
+        // 4. GRAND TOTAL (ACCUMULATED)
+        // ===============================
+        $grandTotalQuery = Payment::query();
 
+        if (!$isAllTime) {
+            $grandTotalQuery->whereDate('created_at', '<=', $date);
+        }
+
+        $overallGrandTotal = $grandTotalQuery->sum('amount');
+
+        // ===============================
+        // RESPONSE
+        // ===============================
         return response()->json([
-            'selected_date' => $date,
-            'grand_total' => (float)$allPaymentsForDate->sum('amount'), // Total for selected day
-            'summary_list' => $summaryData, // List of all dates + amounts
-            'overall_grand_total' => (float)$grandTotalAllTime, // Sum of everything ever
+            'selected_date' => $isAllTime ? 'All-Time' : $date,
+            'report_total' => (float) $allPayments->sum('amount'),
+            'summary_list' => $summaryData,
+            'overall_grand_total' => (float) $overallGrandTotal,
             'stats' => $stats,
             'transactions' => $transactions
-        ], 200, ['Content-Type' => 'application/json; charset=UTF-8'], JSON_UNESCAPED_UNICODE);
+        ]);
     }
 
-    // App\Http\Controllers\Admin\DashboardController.php or ReportController.php
-
+    /**
+     * All-time stats (UNCHANGED)
+     */
     public function getAllTimeStats()
     {
         $colleges = ["CITE", "CASE", "CCJE", "COHME"];
+        $target = 4000;
 
-        $stats = collect($colleges)->map(function ($collegeName) {
-            // 1. Total lifetime collection for this college
-            $totalCollected = Payment::whereHas('student', function ($q) use ($collegeName) {
-                $q->where('college', $collegeName);
-            })->sum('amount');
+        $stats = collect($colleges)->map(function ($collegeName) use ($target) {
 
-            // 2. Student population and their lifetime balance status
-            $students = Student::where('college', $collegeName)
-                ->withSum('payments', 'amount')
-                ->get();
+            $totalCollected = Payment::join('students', 'payments.student_id', '=', 'students.student_id')
+                ->where('students.college', $collegeName)
+                ->sum('payments.amount');
 
-            $paidInFullCount = $students->filter(function ($student) {
-                $startingBalance = ($student->balance > 0) ? $student->balance : 4000;
-                return ($startingBalance - ($student->payments_sum_amount ?? 0)) <= 0;
-            })->count();
+            $studentCount = Student::where('college', $collegeName)->count();
+
+            $paidInFullCount = Student::where('college', $collegeName)
+                ->whereIn('student_id', function ($query) use ($target) {
+                    $query->select('student_id')
+                        ->from('payments')
+                        ->groupBy('student_id')
+                        ->havingRaw('SUM(amount) >= ?', [$target]);
+                })
+                ->count();
+
+            $partialPaymentCount = Student::where('college', $collegeName)
+                ->whereIn('student_id', function ($query) use ($target) {
+                    $query->select('student_id')
+                        ->from('payments')
+                        ->groupBy('student_id')
+                        ->havingRaw('SUM(amount) > 0 AND SUM(amount) < ?', [$target]);
+                })
+                ->count();
 
             return [
                 'college' => $collegeName,
-                'total_collected' => (float)$totalCollected,
-                'student_count' => $students->count(),
+                'total_collected' => (float) $totalCollected,
+                'student_count' => $studentCount,
                 'paid_in_full' => $paidInFullCount,
+                'partial_payments' => $partialPaymentCount,
             ];
         });
 
         return response()->json([
-            'overall_total' => (float)Payment::sum('amount'),
+            'overall_total' => (float) Payment::sum('amount'),
             'college_stats' => $stats
         ]);
     }
