@@ -11,6 +11,7 @@ use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\ViewTransactionController;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Public\StudentPortalController;
+use App\Http\Controllers\Admin\QueueController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -20,6 +21,9 @@ Route::get('/password/setup/{user}', [AuthController::class, 'showPasswordSetupF
 Route::post('/password/setup/{user}', [AuthController::class, 'setupPassword'])->name('password.update.signed');
 Route::get('/password/verify/{user}', [AuthController::class, 'verifySignature'])->name('password.verify');
 Route::get('/student/records', [StudentPortalController::class, 'getRecords']);
+
+// QUEUE ROUTE PUBLIC
+Route::get('/queue/status', [QueueController::class, 'getStatus']);
 
 // --- Protected Routes ---
 Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
@@ -97,6 +101,19 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
             Route::get('/payments/lookup', [PaymentController::class, 'lookup']);
             Route::get('/transactions', [ViewTransactionController::class, 'index']);
             Route::get('/transactions/user', [ViewTransactionController::class, 'getTransactions']);
+        });
+
+        Route::prefix('queue')->group(function () {
+            // Both Admins and Staff can register students (Attendance Desk)
+            Route::middleware(['role:Admin,Staff', 'throttle:40,1'])->group(function () {
+                Route::post('/register', [QueueController::class, 'register']);   // For Attendance
+                //Route::post('/next', [QueueController::class, 'triggerNext']);           // Admin Button
+                //Route::post('/back', [QueueController::class, 'triggerBack']);           // Admin Button
+                Route::post('/complete', [QueueController::class, 'complete']);   // Admin Button
+                Route::get('/status', [QueueController::class, 'getStatus']);   // For Display
+                // This matches /admin/queue/next_toga, /admin/queue/next_creative, etc.
+                Route::post('/{action}', [QueueController::class, 'handleAction']);
+            });
         });
     });
 });
