@@ -24,28 +24,29 @@ class DashboardController extends Controller
         $dailyCollection = (float) Payment::whereDate('created_at', $today)->sum('amount');
 
         // 3. College Breakdown Logic
-        // We use withSum to get the total paid per student, then group by college
         $studentsWithBalances = Student::query()
             ->withSum('payments', 'amount')
             ->get();
-
-        //$zeroPayments = $studentsWithBalances->filter(fn($s) => ($s->payments_sum_amount ?? 0) <= 0)->count();
 
         $collegeStats = $studentsWithBalances->groupBy('college')->map(function ($students, $collegeName) use ($fee) {
             return [
                 'college' => $collegeName,
                 'total_students' => $students->count(),
                 'fully_paid' => $students->filter(fn($s) => ($s->payments_sum_amount ?? 0) >= $fee)->count(),
+                // Zero payments: Sum is exactly 0 or null
                 'zero_payments' => $students->filter(fn($s) => ($s->payments_sum_amount ?? 0) <= 0)->count(),
+                // Partial payments: More than 0 but less than the full fee
                 'partial_payments' => $students->filter(fn($s) => ($s->payments_sum_amount > 0) && ($s->payments_sum_amount < $fee))->count(),
             ];
         })->values();
 
-        // 4. Calculate Global Fully Paid (for the top cards)
+        // 4. Calculate Global Totals from the stats collection
         $totalFullyPaid = $collegeStats->sum('fully_paid');
+        $totalZeroPayments = $collegeStats->sum('zero_payments');
+        $totalPartialPayments = $collegeStats->sum('partial_payments');
 
         // 5. Get Collector Statistics
-        $userTransactions = User::has('payments') // Only users who have collected
+        $userTransactions = User::has('payments')
             ->withCount('payments')
             ->get()
             ->map(function ($user) {
@@ -62,9 +63,10 @@ class DashboardController extends Controller
                 'dailyCollection' => $dailyCollection,
                 'totalStudents' => $totalStudents,
                 'fullyPaidStudents' => $totalFullyPaid,
+                'partialPaymentStudents' => $totalPartialPayments, // Added for clarity
+                'zeroPaymentStudents' => $totalZeroPayments,      // Fixed calculation
                 'expectedTotal' => $totalStudents * $fee,
-                'zeroPaymentStudents' => $totalStudents - $totalFullyPaid,
-                'userTransactions' => $userTransactions, // Add this line
+                'userTransactions' => $userTransactions,
             ],
             'college_breakdown' => $collegeStats,
             'contribution_fee' => $fee,
