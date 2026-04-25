@@ -66,18 +66,31 @@ class AuthController extends Controller
 
     public function setupPassword(Request $request, User $user)
     {
-        // 3. CRITICAL: Re-verify the signature before allowing the password change
-        if (! $request->hasValidSignature()) {
-            return response()->json(['message' => 'Unauthorized password reset attempt.'], 403);
+        /**
+         * 1. Reconstruct the Signed URL for Verification
+         * Just like in the verifySignature method, we must validate 
+         * against the full original signed path, not just the POST body.
+         */
+        $queryString = $request->getQueryString();
+        $originalPath = route('password.setup', ['user' => $user->id], false);
+        $fullOriginalUrl = config('app.url') . $originalPath . '?' . $queryString;
+
+        if (! Request::create($fullOriginalUrl)->hasValidSignature()) {
+            return response()->json([
+                'message' => 'Unauthorized password setup attempt.',
+                'debug' => 'Signature mismatch or expired.'
+            ], 403);
         }
 
+        // 2. Validation
         $request->validate([
             'password' => 'required|string|min:8|confirmed',
         ]);
 
+        // 3. Update User
         $user->update([
             'password' => Hash::make($request->password),
-            'email_verified_at' => now(), // Mark email as verified when password is set    
+            'email_verified_at' => now(),
         ]);
 
         return response()->json(['message' => 'Your account is now ready! You can log in.']);
@@ -85,39 +98,45 @@ class AuthController extends Controller
 
     public function verifySignature(Request $request, User $user)
     {
-        // 1. Get the current query string (expires, signature, etc.)
-        $queryString = $request->getQueryString();
+        /**
+         * 1. Reconstruct the base URL accurately.
+         * Ensure your .env APP_URL matches the URL being used in the email.
+         * If the email uses 'https', your APP_URL must be 'https'.
+         */
+        $originalPath = route('password.setup', ['user' => $user->id], false);
+        $baseUrl = config('app.url') . $originalPath;
 
-        // 2. Manually reconstruct the ORIGINAL URL that was in the email
-        // This must match the route name 'password.setup'
-        $originalPath = url("/api/password/setup/{$user->id}");
-        $fullOriginalUrl = $originalPath . '?' . $queryString;
+        // 2. Attach the query parameters exactly as they arrived
+        $fullOriginalUrl = $baseUrl . '?' . $request->getQueryString();
 
-        // 3. Create a temporary request object to validate that specific URL
+        // 3. Create the temporary request for validation
         $originalRequest = Request::create($fullOriginalUrl);
 
         if (! $originalRequest->hasValidSignature()) {
             return response()->json([
                 'message' => 'Invalid signature.',
-                'debug_original_url' => $fullOriginalUrl // Compare this to your email link!
+                'debug' => [
+                    'reconstructed' => $fullOriginalUrl,
+                    'app_url_setting' => config('app.url'),
+                    'query_string' => $request->getQueryString()
+                ]
             ], 403);
         }
-        $params = $request->query();
-        unset($params['user']);
-        $originalUrl = url("/api/password/setup/{$user->id}") . '?' . http_build_query($params);
 
-        if (! Request::create($originalUrl)->hasValidSignature()) {
-            return response()->json(['message' => 'Invalid signature.'], 403);
-        }
-
-        // NEW: Check if user already set their password/verified their email
+        /**
+         * 4. Check User State
+         * If the signature is valid, check if they have already completed the process.
+         */
         if ($user->email_verified_at !== null) {
             return response()->json([
                 'valid' => true,
-                'is_active' => true // Tell frontend to skip the form
+                'is_active' => true
             ]);
         }
 
-        return response()->json(['valid' => true, 'is_active' => false]);
+        return response()->json([
+            'valid' => true,
+            'is_active' => false
+        ]);
     }
 }
