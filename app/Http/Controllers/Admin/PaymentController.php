@@ -73,7 +73,7 @@ class PaymentController extends Controller
     {
         $request->validate([
             'reference_number' => 'required|string|exists:payments,reference_number',
-            'amount'           => 'required|numeric|min:1',
+            'amount'           => 'required|numeric|min:0',
         ]);
 
         return DB::transaction(function () use ($request) {
