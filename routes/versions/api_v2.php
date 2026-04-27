@@ -12,6 +12,7 @@ use App\Http\Controllers\Admin\ViewTransactionController;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Public\StudentPortalController;
 use App\Http\Controllers\Admin\QueueController;
+use App\Http\Controllers\Admin\ReceiptsController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -102,6 +103,9 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
             Route::get('/transactions/user', [ViewTransactionController::class, 'getTransactions']);
             Route::get('/reports/all-time-stats', [ReportController::class, 'getAllTimeStats']);
             Route::get('/reports', [ReportController::class, 'index']);
+
+            // Receipts
+            Route::get('/receipts/sync', [ReceiptsController::class, 'syncReports']);
         });
         
 

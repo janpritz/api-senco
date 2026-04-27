@@ -3,15 +3,64 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\{Payment, Student};
+use App\Models\{CollectionReport, Payment, Student, User};
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 class ReportController extends Controller
 {
     /**
      * Get unique dates for dropdown
      */
+
+    public function index()
+    {
+        // 1. Get all narrative reports with the user who wrote them
+        $reports = CollectionReport::with('user:id,name')
+            ->orderBy('report_date', 'desc')
+            ->get();
+
+        // 2. Get a list of users who have actually collected payments today
+        // We assume you have a 'payments' or 'collections' relationship on the User model
+        $collectorsToday = User::whereHas('payments', function ($query) {
+            $query->whereDate('created_at', Carbon::today());
+        })->select('id', 'name')->get();
+
+        return response()->json([
+            'reports' => $reports,
+            'collectors_today' => $collectorsToday
+        ]);
+    }
+
+    public function storeDailyNarrative(Request $request)
+    {
+        $request->validate([
+            'summary' => 'required|string',
+            'total_collected' => 'required|numeric'
+        ]);
+
+        $report = CollectionReport::updateOrCreate(
+            [
+                'report_date' => now()->format('Y-m-d'),
+                'user_id' => Auth::id()
+            ],
+            [
+                'total_collected' => $request->total_collected,
+                'transaction_count' => $request->transaction_count,
+                'summary' => $request->summary,
+                'issues' => $request->issues,
+                'resolutions' => $request->resolutions,
+                'status' => 'submitted'
+            ]
+        );
+
+        return response()->json([
+            'message' => 'Narrative report synced successfully',
+            'report' => $report
+        ]);
+    }
     public function getAvailableDates()
     {
         return Payment::select(DB::raw('DATE(created_at) as date'))
@@ -118,9 +167,9 @@ class ReportController extends Controller
         // 3. SUMMARY LIST (UP TO DATE)
         // ===============================
         $summaryData = Payment::select(
-                DB::raw('DATE(created_at) as date'),
-                DB::raw('SUM(amount) as daily_total')
-            )
+            DB::raw('DATE(created_at) as date'),
+            DB::raw('SUM(amount) as daily_total')
+        )
             ->when(!$isAllTime, function ($q) use ($date) {
                 $q->whereDate('created_at', '<=', $date);
             })
