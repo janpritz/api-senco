@@ -55,7 +55,6 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
 
             // System Settings & Sync
             Route::resource('settings', SettingController::class)->except(['create', 'edit']);
-            Route::get('/sync-google-sheets', [SyncGoogleSheetsController::class, 'syncGoogleSheets']);
 
             // Student Management (Full Control)
             Route::post('/students', [StudentController::class, 'store']);
@@ -64,7 +63,6 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
             Route::prefix('reports')->group(function () {
                 Route::get('/dates', [ReportController::class, 'getAvailableDates']);
                 Route::get('/generate', [ReportController::class, 'getReportData']);
-                Route::get('/all-time-stats', [ReportController::class, 'getAllTimeStats']);
             });
         });
 
@@ -74,6 +72,7 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
          */
         Route::middleware(['role:Admin,Auditor'])->group(function () {
             Route::post('/payments', [PaymentController::class, 'store']);
+            Route::get('/sync-google-sheets', [SyncGoogleSheetsController::class, 'syncGoogleSheets']);
         });
 
         // Update Payments
@@ -101,7 +100,10 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
             Route::get('/payments/lookup', [PaymentController::class, 'lookup']);
             Route::get('/transactions', [ViewTransactionController::class, 'index']);
             Route::get('/transactions/user', [ViewTransactionController::class, 'getTransactions']);
+            Route::get('/reports/all-time-stats', [ReportController::class, 'getAllTimeStats']);
+            Route::get('/reports', [ReportController::class, 'index']);
         });
+        
 
         Route::prefix('queue')->group(function () {
             // Both Admins and Staff can register students (Attendance Desk)
