@@ -54,4 +54,10 @@ class ReceiptClaim extends Model
             'claimed_at' => now(),
         ]);
     }
+
+    public function user()
+    {
+        // Adjust 'released_by' and 'id' if your foreign/local keys differ
+        return $this->belongsTo(User::class, 'released_by', 'id');
+    }
 }

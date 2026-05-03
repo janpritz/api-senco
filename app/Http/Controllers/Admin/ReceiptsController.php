@@ -28,6 +28,15 @@ class ReceiptsController extends Controller
 
         return response()->json(['message' => 'Receipt successfully claimed.']);
     }
+
+    public function checkExports()
+    {
+        // Get all receipt claims that are ready for export (e.g., reached 4k but not exported)
+        $pendingExports = ReceiptClaim::where('is_exported', true)
+            ->get();
+        return response()->json($pendingExports->count());
+    }
+
     public function getStats()
     {
         try {
@@ -76,10 +85,22 @@ class ReceiptsController extends Controller
     // app/Http/Controllers/Api/ReportSyncController.php
     public function syncReceipts()
     {
+        $receiptClaims = ReceiptClaim::with('user:id,name')->get()->map(function ($claim) {
+            return [
+                'id' => $claim->id,
+                'student_id' => $claim->student_id,
+                'is_claimed' => $claim->is_claimed,
+                'is_exported' => $claim->is_exported,
+                // Explicitly map the user name here
+                'released_by' => $claim->user ? $claim->user->name : 'System',
+                'claimed_at' => $claim->claimed_at,
+                'updated_at' => $claim->updated_at,
+            ];
+        });
         return response()->json([
             'students' => Student::all(),
             'payments' => Payment::all(),
-            'receipt_claims' => ReceiptClaim::all(),
+            'receipt_claims' => $receiptClaims,
         ]);
     }
 

@@ -120,6 +120,9 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
 
                 // Stats for your Dashboard (Total claimed vs unclaimed)
                 Route::get('/stats', [ReceiptsController::class, 'getStats']);
+
+                // routes/api.php
+                Route::get('/check-exports', [ReceiptsController::class, 'checkExports']);
             });
         });
 
