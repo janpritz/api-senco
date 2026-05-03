@@ -105,9 +105,24 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
             Route::get('/reports', [ReportController::class, 'index']);
 
             // Receipts
-            Route::get('/receipts/sync', [ReceiptsController::class, 'syncReports']);
+            Route::prefix('receipts')->group(function () {
+                // Get students who are ready for export (e.g., reached 4k but not exported)
+                Route::get('/pending-export', [ReceiptsController::class, 'getPendingExport']);
+
+                // Bulk update is_exported when the "Download PDF" button is clicked
+                Route::post('/mark-exported', [ReceiptsController::class, 'markAsExported']);
+
+                // Individual claim (When a student physically picks up the receipt)
+                Route::post('/{id}/claim', [ReceiptsController::class, 'claimReceipt']);
+
+                // Sync/Register batch (For the "Lock-in" filing ID logic)
+                Route::get('/sync', [ReceiptsController::class, 'syncReceipts']);
+
+                // Stats for your Dashboard (Total claimed vs unclaimed)
+                Route::get('/stats', [ReceiptsController::class, 'getStats']);
+            });
         });
-        
+
 
         Route::prefix('queue')->group(function () {
             // Both Admins and Staff can register students (Attendance Desk)

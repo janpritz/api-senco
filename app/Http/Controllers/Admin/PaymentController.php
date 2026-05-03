@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\{Auth, Cache, DB, Log};
 use App\Jobs\SendPaymentReceiptJob;
 use App\Jobs\SendPaymentUpdateReceiptJob;
+use App\Services\Admin\ReceiptClaimService;
 
 class PaymentController extends Controller
 {
@@ -28,6 +29,10 @@ class PaymentController extends Controller
             // The Service Layer handles the SENCO-XX-XXXXXX logic
             $payment = $this->paymentService->recordPayment($validated, Auth::id());
 
+            // 2. Ensure Filing ID exists (The "Lock-in" logic)
+            // This ensures they are ready to be found in the 1k population printout
+            $filing = app(ReceiptClaimService::class)
+                ->updateOrCreateFiling($payment->student_id);
             // Dispatch the email job after successful payment recording
             SendPaymentReceiptJob::dispatch($payment);
             return response()->json([

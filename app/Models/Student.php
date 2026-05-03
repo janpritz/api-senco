@@ -46,4 +46,9 @@ class Student extends Model
         // 3. Return the calculated remainder
         return max(0, $startingBalance - $totalPaid);
     }
+
+    public function receiptClaim()
+    {
+        return $this->hasOne(ReceiptClaim::class, 'student_id', 'student_id');
+    }
 }
