@@ -15,6 +15,7 @@ use App\Http\Controllers\Admin\QueueController;
 use App\Http\Controllers\Admin\ReceiptsController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Admin\GraduationSchedController;
 
 // --- Public Routes ---
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
@@ -22,6 +23,8 @@ Route::get('/password/setup/{user}', [AuthController::class, 'showPasswordSetupF
 Route::post('/password/setup/{user}', [AuthController::class, 'setupPassword'])->name('password.update.signed');
 Route::get('/password/verify/{user}', [AuthController::class, 'verifySignature'])->name('password.verify');
 Route::get('/student/records', [StudentPortalController::class, 'getRecords']);
+// The explicit GET route requested for displaying the public chronological timeline
+Route::get('/graduation-schedules', [GraduationSchedController::class, 'index'])->middleware('throttle:60,1');
 
 // QUEUE ROUTE PUBLIC
 Route::get('/queue/status', [QueueController::class, 'getStatus']);
@@ -139,5 +142,11 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
                 Route::post('/{action}', [QueueController::class, 'handleAction']);
             });
         });
+        // Protected SENCO Admin Routes
+        Route::prefix('graduation-schedules')->group(function () {
+            Route::post('/', [GraduationSchedController::class, 'store']);
+            Route::put('/{graduationSchedule}', [GraduationSchedController::class, 'update']);
+            Route::delete('/{graduationSchedule}', [GraduationSchedController::class, 'destroy']);
+        })->middleware(['role:Admin,Auditor','throttle:30,1']);
     });
 });
