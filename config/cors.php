@@ -15,11 +15,14 @@ return [
     |
     */
 
-    'paths' => ['api/*', 'sanctum/csrf-cookie', 'login'],
+    'paths' => ['api/*', 'sanctum/csrf-cookie'],
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => ['*'],
+
+    'allowed_origins' => ['https://senco.accsangkaychatbot.com'],
+
+    // 'allowed_origins' => ['*'],
 
     'allowed_origins_patterns' => [],
 
